@@ -1,0 +1,26 @@
+{
+  "name": "mcp-learning-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A learning-focused MCP (Model Context Protocol) server prototype in TypeScript.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-learning-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
