@@ -50,6 +50,19 @@ The server exposes the following capabilities over MCP:
 | `get_package_json_summary`   | Name, version, scripts, deps — compact form (handles monorepo paths).           |
 | `detect_common_patterns`     | Spot auth, payments, API structure, ORM, testing, validation, CI from deps + tree. |
 
+### Tools — repository generator (write; PR-only flow) ⚠️
+All of these carry `destructiveHint: true` so MCP clients prompt before running them.
+**Nothing in this layer pushes directly to `main`** — every change lands on a fresh branch + PR.
+
+| Tool                  | What it does                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `create_repository`   | Create a new repo under the authenticated user (auto-init `main`).                                 |
+| `create_branch`       | Fork a branch off `base_branch`. **Idempotent**: if the branch exists, returns its current ref.    |
+| `create_file`         | Create or update a single file (looks up existing SHA when updating).                              |
+| `commit_files`        | One atomic commit with many files via the Git Data API. Preferred over `create_file` in a loop.    |
+| `open_pull_request`   | Open a PR. **Idempotent**: if a matching PR exists, returns its URL.                               |
+| `generate_client_repo`| High-level: scaffolds a Next.js + Tailwind (+ optional NestJS, + optional Stripe) repo and opens a PR. |
+
 ### Resources (read-only views)
 | URI                           | What it returns                                       |
 | ----------------------------- | ----------------------------------------------------- |
@@ -224,6 +237,58 @@ Once connected, try saying things like:
 - *"Read `src/app/api/users/route.ts` from `my-org/my-app`."*
 - *"Search `my-org/my-app` for 'STRIPE_SECRET_KEY'."*
 - *"Read `github://repo/status` and summarise it."*
+
+**Repository generator:**
+- *"Create a new client website repo for a nightclub called Pulse. Use the
+  Standard KeyesCode Web App template, include Stripe but skip the backend."*
+- *"Generate a SaaS landing page repo named `linear-clone` and use my
+  `tannerkeyes/some-old-app` repo as a style reference."*
+- *"Open a PR on `acme-app` adding a new file `docs/CONTRIBUTING.md` with
+  this content: …"*  (uses `create_branch` + `commit_files` + `open_pull_request`)
+
+## Repository generator (Phase 3)
+
+The generator layer composes the lower-level write tools into a high-level
+`generate_client_repo` flow. The pipeline is:
+
+1. (optional) Analyse `style_reference_repos` via the read tools — surfaces a
+   one-liner per ref into the README's "Generation notes" section.
+2. Build the file set in memory via `src/generator/*` (Next.js + Tailwind,
+   optional NestJS, optional Stripe placeholders, README, .env.example).
+3. `create_repository` — auto-init's `main` branch with a default README.
+4. `create_branch` — `initial-scaffold` off `main`.
+5. `commit_files` — single atomic commit containing every file (via the
+   Git Data API: createBlob → createTree → createCommit → updateRef).
+6. `open_pull_request` — *"Initial scaffold: <project>"* PR, never merged
+   automatically.
+
+**Safety:**
+- All write tools carry `destructiveHint: true`.
+- `create_branch` and `open_pull_request` are idempotent — re-running with
+  the same args won't error or create duplicates.
+- `commit_files` validates every path: rejects `..`, leading `/`, and any
+  write into `.git/`. Duplicate paths in one batch are also rejected.
+- `generate_client_repo` never targets `main` — work always lands on
+  `initial-scaffold` and you decide whether to merge.
+
+**Test it safely:**
+- Aim it at a **throwaway repo name** in your own account first
+  (e.g. `mcp-scaffold-test-1`, `mcp-scaffold-test-2`).
+- Or, even better, use a dedicated **test org** so the new repos are
+  isolated from anything important.
+- After running once, inspect the PR diff carefully before any merges.
+
+### Adding new templates
+
+Today there's one template — *Standard KeyesCode Web App*. To add another:
+
+1. Drop new generator functions in `src/generator/` (e.g. `generateAdminPanel.ts`).
+2. Either extend `generateProjectStructure` with a `template` flag, or add a
+   sibling orchestrator (`generateAdminProjectStructure`).
+3. Add a new high-level tool (`generate_admin_repo`) wired to that orchestrator.
+
+The lower-level write tools (`create_repository`, `commit_files`, …) are
+template-agnostic — only the file-content generators differ.
 
 ---
 

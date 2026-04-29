@@ -27,6 +27,17 @@ It exposes three kinds of MCP capabilities:
 - \`get_package_json_summary\` — name, version, scripts, deps in a compact form.
 - \`detect_common_patterns\` — auth/payments/ORM/testing/etc. detected from deps + paths.
 
+## Tools — repository generator (write; PR-only flow)
+- \`create_repository\` — create a new repo for the authenticated user (auto-init).
+- \`create_branch\` — fork a branch off another (idempotent).
+- \`create_file\` — create or update one file (uses existing SHA when updating).
+- \`commit_files\` — atomic multi-file commit via the Git Data API (preferred for >1 file).
+- \`open_pull_request\` — open a PR (idempotent — returns existing PR if one already matches).
+- \`generate_client_repo\` — high-level: build a Next.js + Tailwind (+ optional NestJS, +
+  optional Stripe placeholder) scaffold and ship it as a single PR. Never pushes to main.
+
+All write tools are marked \`destructiveHint: true\` so MCP clients prompt before running them.
+
 ## Resources (read-only views the user can attach)
 - \`github://prs/open\` — current open PRs as a Markdown list.
 - \`github://repo/status\` — repo metadata (branch, stars, forks, counts).

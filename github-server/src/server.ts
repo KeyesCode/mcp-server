@@ -22,6 +22,14 @@ import { registerDetectFrameworkTool } from "./tools/detectFramework.js";
 import { registerGetPackageJsonSummaryTool } from "./tools/getPackageJsonSummary.js";
 import { registerDetectCommonPatternsTool } from "./tools/detectCommonPatterns.js";
 
+// Tools — repository generator (write side; PR-only flow)
+import { registerCreateRepositoryTool } from "./tools/createRepository.js";
+import { registerCreateBranchTool } from "./tools/createBranch.js";
+import { registerCreateFileTool } from "./tools/createFile.js";
+import { registerCommitFilesTool } from "./tools/commitFiles.js";
+import { registerOpenPullRequestTool } from "./tools/openPullRequest.js";
+import { registerGenerateClientRepoTool } from "./tools/generateClientRepo.js";
+
 // Resources
 import {
   registerOpenPrsResource,
@@ -89,6 +97,14 @@ export function buildServer(): McpServer {
   registerGetPackageJsonSummaryTool(server);
   registerDetectCommonPatternsTool(server);
 
+  // Generator tools (write side — all marked destructiveHint, never push to main).
+  registerCreateRepositoryTool(server);
+  registerCreateBranchTool(server);
+  registerCreateFileTool(server);
+  registerCommitFilesTool(server);
+  registerOpenPullRequestTool(server);
+  registerGenerateClientRepoTool(server);
+
   registered.tools.push(
     "list_open_prs",
     "get_pr_details",
@@ -103,6 +119,12 @@ export function buildServer(): McpServer {
     "detect_framework",
     "get_package_json_summary",
     "detect_common_patterns",
+    "create_repository",
+    "create_branch",
+    "create_file",
+    "commit_files",
+    "open_pull_request",
+    "generate_client_repo",
   );
 
   // Resources.
