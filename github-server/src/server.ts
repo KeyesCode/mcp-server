@@ -5,13 +5,22 @@
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-// Tools
+// Tools — workflow (PRs, issues, comments)
 import { registerListOpenPrsTool } from "./tools/listOpenPrs.js";
 import { registerGetPrDetailsTool } from "./tools/getPrDetails.js";
 import { registerGetPrDiffTool } from "./tools/getPrDiff.js";
 import { registerListIssuesTool } from "./tools/listIssues.js";
 import { registerCreateIssueTool } from "./tools/createIssue.js";
 import { registerCommentOnPrTool } from "./tools/commentOnPr.js";
+
+// Tools — repository intelligence (discovery, inspection, pattern detection)
+import { registerListRepositoriesTool } from "./tools/listRepositories.js";
+import { registerGetRepoTreeTool } from "./tools/getRepoTree.js";
+import { registerReadFileTool } from "./tools/readFile.js";
+import { registerSearchCodebaseTool } from "./tools/searchCodebase.js";
+import { registerDetectFrameworkTool } from "./tools/detectFramework.js";
+import { registerGetPackageJsonSummaryTool } from "./tools/getPackageJsonSummary.js";
+import { registerDetectCommonPatternsTool } from "./tools/detectCommonPatterns.js";
 
 // Resources
 import {
@@ -63,13 +72,23 @@ export function buildServer(): McpServer {
   startTime = Date.now();
   const server = new McpServer(SERVER_INFO);
 
-  // Tools — each handler in its own file.
+  // Workflow tools (PRs, issues, comments).
   registerListOpenPrsTool(server);
   registerGetPrDetailsTool(server);
   registerGetPrDiffTool(server);
   registerListIssuesTool(server);
   registerCreateIssueTool(server);
   registerCommentOnPrTool(server);
+
+  // Repository intelligence tools (discovery, inspection, pattern detection).
+  registerListRepositoriesTool(server);
+  registerGetRepoTreeTool(server);
+  registerReadFileTool(server);
+  registerSearchCodebaseTool(server);
+  registerDetectFrameworkTool(server);
+  registerGetPackageJsonSummaryTool(server);
+  registerDetectCommonPatternsTool(server);
+
   registered.tools.push(
     "list_open_prs",
     "get_pr_details",
@@ -77,6 +96,13 @@ export function buildServer(): McpServer {
     "list_issues",
     "create_issue",
     "comment_on_pr",
+    "list_repositories",
+    "get_repo_tree",
+    "read_file",
+    "search_codebase",
+    "detect_framework",
+    "get_package_json_summary",
+    "detect_common_patterns",
   );
 
   // Resources.

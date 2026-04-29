@@ -1,8 +1,9 @@
 # mcp-github-workflow-server
 
 A real-use **Model Context Protocol** server that lets Claude (or any
-MCP-aware client) drive your GitHub workflow: list and review PRs, triage
-issues, post comments, and produce weekly digests.
+MCP-aware client) drive your GitHub workflow *and* understand your existing
+repos: list and review PRs, triage issues, post comments, walk a repo's
+tree, read individual files, and detect frameworks / common patterns.
 
 This is a learning prototype — it's small enough to read in one sitting and
 real enough to plug into Claude Desktop and use every day.
@@ -28,7 +29,7 @@ real enough to plug into Claude Desktop and use every day.
 
 The server exposes the following capabilities over MCP:
 
-### Tools (actions)
+### Tools — workflow (PRs, issues, comments)
 | Tool              | What it does                                                         |
 | ----------------- | -------------------------------------------------------------------- |
 | `list_open_prs`   | List open PRs in a repo (defaults to your configured repo).         |
@@ -37,6 +38,17 @@ The server exposes the following capabilities over MCP:
 | `list_issues`     | List issues with PRs filtered out.                                   |
 | `create_issue`    | Create a new issue. **Write side effect.**                           |
 | `comment_on_pr`   | Post a conversation comment on a PR. **Write side effect.**          |
+
+### Tools — repository intelligence (read-only)
+| Tool                         | What it does                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------- |
+| `list_repositories`          | List repos for the authenticated user (or for a given org).                     |
+| `get_repo_tree`              | Recursive directory listing, filtered (no node_modules/dist/build/.git/etc).    |
+| `read_file`                  | Read a single file, refusing binaries and truncating at 200 KB.                 |
+| `search_codebase`            | Keyword search inside a repo via GitHub's code search.                          |
+| `detect_framework`           | Detect Next.js / NestJS / Express / Astro / Rust / Go / Python / etc.           |
+| `get_package_json_summary`   | Name, version, scripts, deps — compact form (handles monorepo paths).           |
+| `detect_common_patterns`     | Spot auth, payments, API structure, ORM, testing, validation, CI from deps + tree. |
 
 ### Resources (read-only views)
 | URI                           | What it returns                                       |
@@ -193,6 +205,7 @@ claude mcp add github-workflow \
 
 Once connected, try saying things like:
 
+**Workflow:**
 - *"Show me the open PRs."*
 - *"Get the details for PR 123 and tell me what's risky."*
 - *"Use the `draft_pr_review` slash-prompt on PR 123."*
@@ -201,6 +214,15 @@ Once connected, try saying things like:
   'Saw it fail twice on main today, no logs.' Add the labels `bug` and `triage`."*
 - *"Comment on PR 123 saying 'Looks great — one small nit on the error
   handling, see file X line Y.'"*
+
+**Repository intelligence:**
+- *"List my repos sorted by most recently pushed."*
+- *"Show me the tree for `my-org/my-app`."*
+- *"What framework does `my-org/my-app` use?"*
+- *"Summarise the package.json for `my-org/my-app`."*
+- *"What patterns does `my-org/my-app` use for auth and payments?"*
+- *"Read `src/app/api/users/route.ts` from `my-org/my-app`."*
+- *"Search `my-org/my-app` for 'STRIPE_SECRET_KEY'."*
 - *"Read `github://repo/status` and summarise it."*
 
 ---

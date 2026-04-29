@@ -10,13 +10,22 @@ const EXPLANATION = `You are talking to a **GitHub Workflow MCP server** written
 
 It exposes three kinds of MCP capabilities:
 
-## Tools (actions you can call)
+## Tools — workflow (PRs, issues, comments)
 - \`list_open_prs\` — list open pull requests for the default repo.
 - \`get_pr_details\` — fetch metadata (labels, reviewers, file counts, mergeable state) for one PR.
 - \`get_pr_diff\` — fetch the unified diff (truncated if huge).
 - \`list_issues\` — list issues, with PRs filtered out.
 - \`create_issue\` — create a new issue (write side effect).
 - \`comment_on_pr\` — post a conversation comment on a PR (write side effect).
+
+## Tools — repository intelligence (read-only)
+- \`list_repositories\` — list repos for the authenticated user, or for an org.
+- \`get_repo_tree\` — recursive directory listing, filtered to drop node_modules/dist/build/etc.
+- \`read_file\` — read a single file with size cap and binary-content filtering.
+- \`search_codebase\` — keyword search via GitHub's code search API (default branch only).
+- \`detect_framework\` — heuristic check across package.json deps + non-JS manifests.
+- \`get_package_json_summary\` — name, version, scripts, deps in a compact form.
+- \`detect_common_patterns\` — auth/payments/ORM/testing/etc. detected from deps + paths.
 
 ## Resources (read-only views the user can attach)
 - \`github://prs/open\` — current open PRs as a Markdown list.
