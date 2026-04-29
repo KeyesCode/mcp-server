@@ -1,0 +1,28 @@
+{
+  "name": "mcp-github-workflow-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An MCP server that exposes GitHub workflows (PRs, issues, comments, digests) over the Model Context Protocol.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-github-workflow-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@octokit/rest": "^21.0.2",
+    "dotenv": "^16.4.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3"
+  }
+}
