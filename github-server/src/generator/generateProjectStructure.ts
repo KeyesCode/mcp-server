@@ -1,15 +1,17 @@
 // Top-level orchestrator for the "Standard KeyesCode Web App" template.
 //
-// Each sub-generator returns an array of `{ path, content }` records. We
-// concatenate them and the orchestrator hands the result to commit_files.
-//
-// Adding a new template is a matter of writing a new orchestrator that
-// composes different sub-generators (or a different one entirely).
+// As of Phase 4, this accepts a StyleProfile so each sub-generator can adapt
+// its output (folder layout, naming convention, import style, etc.). When no
+// profile is supplied we use DEFAULT_PROFILE — same output as Phase 3.
 
 import { generateFrontendFiles } from "./generateFrontend.js";
 import { generateBackendFiles } from "./generateBackend.js";
 import { generateReadme } from "./generateReadme.js";
 import { generateEnvExample } from "./generateEnvExample.js";
+import {
+  DEFAULT_PROFILE,
+  type StyleProfile,
+} from "./styleProfile.js";
 
 export interface GeneratedFile {
   path: string;
@@ -21,21 +23,21 @@ export interface GenerateOptions {
   description?: string;
   includeBackend: boolean;
   includeStripe: boolean;
-  /** Free-form notes from analysing style-reference repos. Embedded in the README so the
-   * developer can see what shaped the output. */
-  styleNotes?: string[];
+  /** Style profile that drives folder layout, naming, imports, etc.
+   * Defaults to DEFAULT_PROFILE when omitted. */
+  profile?: StyleProfile;
 }
 
 /** Build the full file set for a "Standard KeyesCode Web App" scaffold. */
 export function generateProjectStructure(
   opts: GenerateOptions,
 ): GeneratedFile[] {
+  const profile = opts.profile ?? DEFAULT_PROFILE;
   const files: GeneratedFile[] = [];
 
-  // Common root files.
   files.push({
     path: "README.md",
-    content: generateReadme(opts),
+    content: generateReadme(opts, profile),
   });
   files.push({
     path: ".env.example",
@@ -46,12 +48,10 @@ export function generateProjectStructure(
     content: rootGitignore(),
   });
 
-  // Frontend (always present).
-  files.push(...generateFrontendFiles(opts));
+  files.push(...generateFrontendFiles(opts, profile));
 
-  // Backend (optional).
   if (opts.includeBackend) {
-    files.push(...generateBackendFiles(opts));
+    files.push(...generateBackendFiles(opts, profile));
   }
 
   return files;

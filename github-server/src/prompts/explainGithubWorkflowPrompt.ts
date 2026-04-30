@@ -35,6 +35,13 @@ It exposes three kinds of MCP capabilities:
 - \`open_pull_request\` — open a PR (idempotent — returns existing PR if one already matches).
 - \`generate_client_repo\` — high-level: build a Next.js + Tailwind (+ optional NestJS, +
   optional Stripe placeholder) scaffold and ship it as a single PR. Never pushes to main.
+  Pass \`dry_run: true\` to preview the file plan without making any writes.
+
+\`generate_client_repo\` also accepts \`style_reference_repos\` — an array of "owner/repo"
+strings. The generator extracts a *style profile* from those refs (folder layout, file
+naming, component export style, import style) and adapts the generated code to match.
+The README of the generated repo includes a "Why this structure?" section explaining
+which signals shaped the output.
 
 All write tools are marked \`destructiveHint: true\` so MCP clients prompt before running them.
 

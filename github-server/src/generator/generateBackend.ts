@@ -3,13 +3,24 @@
 // We keep this an independent npm project (not a workspace) so a beginner
 // can run `cd backend && npm install` without learning monorepo tooling.
 // Promote to workspaces when complexity warrants it.
+//
+// NestJS itself is opinionated about file naming (kebab-case `*.module.ts`,
+// `*.service.ts`, etc.) and import style (always relative within a feature
+// module), so the StyleProfile mostly doesn't change the backend output.
+// We accept it for symmetry and so future profiles (e.g. "use Fastify
+// adapter" or "include /api prefix") have a place to plug in.
 
 import type {
   GeneratedFile,
   GenerateOptions,
 } from "./generateProjectStructure.js";
+import type { StyleProfile } from "./styleProfile.js";
 
-export function generateBackendFiles(opts: GenerateOptions): GeneratedFile[] {
+export function generateBackendFiles(
+  opts: GenerateOptions,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _profile: StyleProfile,
+): GeneratedFile[] {
   return [
     { path: "backend/package.json", content: backendPackageJson(opts) },
     { path: "backend/tsconfig.json", content: backendTsconfig() },

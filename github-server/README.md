@@ -290,6 +290,96 @@ Today there's one template — *Standard KeyesCode Web App*. To add another:
 The lower-level write tools (`create_repository`, `commit_files`, …) are
 template-agnostic — only the file-content generators differ.
 
+## Style-aware generation (Phase 4)
+
+`generate_client_repo` extracts a **style profile** from the repos in
+`style_reference_repos` and feeds it into the generators, so the output
+adapts to your existing patterns instead of always producing the same
+boilerplate.
+
+### What gets extracted
+
+For each reference repo, `extractStyleProfile` (in `src/generator/styleProfile.ts`)
+makes a small number of read-only API calls and pulls these signals:
+
+| Signal | How |
+| --- | --- |
+| Framework (Next.js / vite-react) | `package.json` deps |
+| Tailwind in use | `package.json` deps |
+| Path aliases configured | `tsconfig.json` `compilerOptions.paths` (JSONC-aware) |
+| `useSrcDir` / `hasComponentsDir` / `hasLibDir` / `hasHooksDir` / `hasServicesDir` / `hasUiSubdir` | Tree walk |
+| File-naming convention | Component file basenames in `components/` (PascalCase vs. kebab vs. camel) |
+| Component style (default vs. named export) | Sniff up to 2 small component files |
+| Import style (absolute vs. relative) | Same samples — does the repo use `@/...` or `../...`? |
+
+### How it influences generation
+
+Once aggregated into a single profile, the frontend generator (`generateFrontend.ts`) reshapes:
+
+- **File names** — `Header.tsx` vs. `header.tsx` vs. (camel) `header.tsx`.
+- **Where components live** — Button at `components/ui/Button.tsx` vs. `components/Button.tsx`.
+- **Source root** — everything under `src/` if any reference uses it.
+- **Optional dirs** — `hooks/use-example.ts` and/or `services/api.ts` are emitted only if a reference has them.
+- **Component definitions** — `export default function Header()` vs. `export function Header()`.
+- **Imports** — `import Header from "@/components/Header"` vs. `import { Header } from "../components/header"`.
+- **`tsconfig.json` paths** — `paths: { "@/*": [...] }` is only emitted when imports are absolute.
+- **Tailwind `content` globs** — extended to cover `hooks/` and `services/` if those dirs exist.
+
+The README of each generated repo also includes a *"Why this structure?"* section listing
+the reference repos analysed, the chosen conventions, and a rationale.
+
+### Aggregation rules (anti-overfitting)
+
+- **Structure flags** are aggregated *inclusively* — if any reference has `hooks/`, the
+  scaffold gets `hooks/`. This keeps the generator from missing useful dirs when one
+  reference happens to lack them.
+- **Conventions** are aggregated by majority vote across all sampled file names / file contents.
+- **Safety override:** if conventions vote for absolute imports but no reference actually
+  configures path aliases, the generator silently downgrades to relative imports — otherwise
+  the generated repo wouldn't compile. The downgrade is logged in the rationale.
+- **Default fallback:** if no references are supplied, or none can be analysed, the
+  generator uses `DEFAULT_PROFILE` — same output as Phase 3 (PascalCase, default export,
+  absolute imports, `components/`, `lib/`, `components/ui/`).
+
+### Dry-run mode
+
+```jsonc
+{
+  "name": "generate_client_repo",
+  "arguments": {
+    "project_name": "pulse",
+    "include_backend": false,
+    "include_stripe": true,
+    "style_reference_repos": ["my-org/my-app"],
+    "dry_run": true
+  }
+}
+```
+
+When `dry_run: true`:
+- Style references **are still read** (read-only) so the preview is style-accurate.
+- The generator runs in memory — file list and content are produced.
+- **No write API calls happen.** No repo, no branch, no commit, no PR.
+- The tool returns a Markdown report containing the resolved style profile, a manifest
+  of every file that *would* be written, and a 30-line / 2 KB preview of each file.
+
+For a fully offline run (zero API calls of any kind), pass `style_reference_repos: []`
+along with `dry_run: true`.
+
+### How to test it safely
+
+1. **Always start with `dry_run: true`** for a brand-new template or style-ref combination.
+   Inspect the manifest and previews. Only when the output looks right do you run with
+   `dry_run: false`.
+2. **Use a sandbox account or test org** for the first non-dry runs (same as Phase 3).
+3. **Spot-check the rationale** — the README's *"Why this structure?"* section should
+   match what you expected. If it says "imports downgraded from absolute → relative
+   because no reference repo configured path aliases", that means your style reference
+   wasn't using `@/` aliases.
+4. **Try contradictory references** to verify aggregation. Pass two refs where one uses
+   PascalCase and the other kebab. Whichever convention has more component files wins —
+   you'll see which in the rationale.
+
 ---
 
 ## Security notes about GitHub tokens

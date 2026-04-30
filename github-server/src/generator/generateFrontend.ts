@@ -1,49 +1,195 @@
-// Generates the Next.js (App Router) + Tailwind frontend file set.
+// Generates the Next.js (App Router) + Tailwind frontend file set, adapted
+// to a StyleProfile.
 //
-// Files use stable, current versions and follow Next 15 / React 18 idioms.
-// We deliberately keep the surface area small — a layout, a landing page,
-// header, footer, a className helper. Just enough to be a real starting
-// point without being noise.
+// What the profile controls:
+//   - useSrcDir         → everything under src/ vs at root
+//   - hasUiSubdir       → Button at components/ui/ vs components/
+//   - hasHooksDir       → emit a hooks/use-example.ts
+//   - hasServicesDir    → emit a services/api.ts
+//   - fileNaming        → Header.tsx vs header.tsx (kebab) vs header.tsx (camel)
+//   - componentStyle    → `export default function X` vs `export function X`
+//   - imports           → `@/components/...` vs `../components/...`
+//
+// We compute paths once into a manifest and then render every file from
+// that manifest, so imports always point at where files actually live.
 
+import path from "node:path";
 import type {
   GeneratedFile,
   GenerateOptions,
 } from "./generateProjectStructure.js";
+import type { StyleProfile } from "./styleProfile.js";
+
+// ---------------------------------------------------------------------------
+// Style helpers
+// ---------------------------------------------------------------------------
+
+/** Convert a logical PascalCase name into the on-disk basename for the
+ * configured convention. Extension is added by the caller. */
+function fileBaseFor(logicalName: string, profile: StyleProfile): string {
+  switch (profile.conventions.fileNaming) {
+    case "kebab-case":
+      // PascalCase → kebab: insert "-" between adjacent lower→upper, lowercase.
+      return logicalName.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase();
+    case "camelCase":
+      return logicalName.charAt(0).toLowerCase() + logicalName.slice(1);
+    case "PascalCase":
+    default:
+      return logicalName;
+  }
+}
+
+/** Build an import statement that respects componentStyle + imports. */
+function importStatement(
+  logicalName: string,
+  fromFile: string,
+  toFile: string,
+  profile: StyleProfile,
+): string {
+  // Strip extension from the import target (TS resolves it).
+  const targetNoExt = toFile.replace(/\.(tsx|ts|jsx|js)$/, "");
+  let importPath: string;
+  if (profile.conventions.imports === "absolute") {
+    // Path alias rooted at "@/" maps to the project root (or src/ if useSrcDir).
+    const rootPrefix = profile.structure.useSrcDir ? "src/" : "";
+    importPath = `@/${targetNoExt.replace(rootPrefix, "")}`;
+  } else {
+    const rel = path.posix.relative(path.posix.dirname(fromFile), targetNoExt);
+    importPath = rel.startsWith(".") ? rel : "./" + rel;
+  }
+  if (profile.conventions.componentStyle === "default-export") {
+    return `import ${logicalName} from "${importPath}";`;
+  }
+  return `import { ${logicalName} } from "${importPath}";`;
+}
+
+/** Build the export prefix for a component definition. */
+function componentExportPrefix(
+  logicalName: string,
+  profile: StyleProfile,
+): string {
+  if (profile.conventions.componentStyle === "default-export") {
+    return `export default function ${logicalName}`;
+  }
+  return `export function ${logicalName}`;
+}
+
+/** Build a manifest mapping each logical name to its on-disk path. */
+interface FrontendPaths {
+  rootPrefix: string; // "" or "src/"
+  layoutPath: string;
+  pagePath: string;
+  globalsCssPath: string;
+  headerPath: string;
+  footerPath: string;
+  buttonPath: string;
+  cnPath: string;
+  stripeLibPath?: string;
+  stripeRoutePath?: string;
+  hookPath?: string;
+  servicePath?: string;
+}
+
+function buildPaths(
+  profile: StyleProfile,
+  opts: GenerateOptions,
+): FrontendPaths {
+  const root = profile.structure.useSrcDir ? "src/" : "";
+  const componentsDir = `${root}components/`;
+  const buttonDir = profile.structure.hasUiSubdir
+    ? `${componentsDir}ui/`
+    : componentsDir;
+  const libDir = `${root}lib/`;
+
+  const paths: FrontendPaths = {
+    rootPrefix: root,
+    layoutPath: `${root}app/layout.tsx`,
+    pagePath: `${root}app/page.tsx`,
+    globalsCssPath: `${root}app/globals.css`,
+    headerPath: `${componentsDir}${fileBaseFor("Header", profile)}.tsx`,
+    footerPath: `${componentsDir}${fileBaseFor("Footer", profile)}.tsx`,
+    buttonPath: `${buttonDir}${fileBaseFor("Button", profile)}.tsx`,
+    cnPath: `${libDir}cn.ts`,
+  };
+
+  if (opts.includeStripe) {
+    paths.stripeLibPath = `${libDir}stripe.ts`;
+    paths.stripeRoutePath = `${root}app/api/stripe/checkout/route.ts`;
+  }
+  if (profile.structure.hasHooksDir) {
+    paths.hookPath = `${root}hooks/${fileBaseFor("useExample", profile)}.ts`;
+  }
+  if (profile.structure.hasServicesDir) {
+    paths.servicePath = `${root}services/${fileBaseFor("api", profile)}.ts`;
+  }
+  return paths;
+}
+
+// ---------------------------------------------------------------------------
+// Public entry point
+// ---------------------------------------------------------------------------
 
 export function generateFrontendFiles(
   opts: GenerateOptions,
+  profile: StyleProfile,
 ): GeneratedFile[] {
+  const paths = buildPaths(profile, opts);
   const files: GeneratedFile[] = [];
 
+  // Root config files (always at repo root, not under src/).
   files.push({ path: "package.json", content: rootPackageJson(opts) });
-  files.push({ path: "tsconfig.json", content: tsconfig() });
+  files.push({ path: "tsconfig.json", content: tsconfig(profile) });
   files.push({ path: "next.config.mjs", content: nextConfig() });
-  files.push({ path: "tailwind.config.ts", content: tailwindConfig() });
+  files.push({ path: "tailwind.config.ts", content: tailwindConfig(profile) });
   files.push({ path: "postcss.config.mjs", content: postcssConfig() });
   files.push({ path: "next-env.d.ts", content: nextEnvDts() });
 
-  files.push({ path: "app/globals.css", content: globalsCss() });
-  files.push({ path: "app/layout.tsx", content: layoutTsx(opts) });
-  files.push({ path: "app/page.tsx", content: pageTsx(opts) });
+  // App + components.
+  files.push({ path: paths.globalsCssPath, content: globalsCss() });
+  files.push({
+    path: paths.layoutPath,
+    content: layoutTsx(opts, profile, paths),
+  });
+  files.push({
+    path: paths.pagePath,
+    content: pageTsx(opts, profile, paths),
+  });
+  files.push({
+    path: paths.headerPath,
+    content: headerTsx(opts, profile, paths),
+  });
+  files.push({
+    path: paths.footerPath,
+    content: footerTsx(opts, profile),
+  });
+  files.push({
+    path: paths.buttonPath,
+    content: buttonTsx(profile, paths),
+  });
+  files.push({ path: paths.cnPath, content: cnTs() });
 
-  files.push({ path: "components/Header.tsx", content: headerTsx(opts) });
-  files.push({ path: "components/Footer.tsx", content: footerTsx(opts) });
-  files.push({ path: "components/ui/Button.tsx", content: buttonTsx() });
-
-  files.push({ path: "lib/cn.ts", content: cnTs() });
-
-  if (opts.includeStripe) {
-    files.push({ path: "lib/stripe.ts", content: stripeLibTs() });
+  if (paths.stripeLibPath) {
+    files.push({ path: paths.stripeLibPath, content: stripeLibTs() });
+  }
+  if (paths.stripeRoutePath) {
     files.push({
-      path: "app/api/stripe/checkout/route.ts",
-      content: stripeCheckoutRouteTs(),
+      path: paths.stripeRoutePath,
+      content: stripeCheckoutRouteTs(profile, paths),
     });
+  }
+  if (paths.hookPath) {
+    files.push({ path: paths.hookPath, content: useExampleHookTs() });
+  }
+  if (paths.servicePath) {
+    files.push({ path: paths.servicePath, content: apiServiceTs() });
   }
 
   return files;
 }
 
-// --- Templates --------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
 
 function rootPackageJson(opts: GenerateOptions): string {
   const deps: Record<string, string> = {
@@ -55,7 +201,6 @@ function rootPackageJson(opts: GenerateOptions): string {
     deps.stripe = "^17.4.0";
     deps["@stripe/stripe-js"] = "^4.10.0";
   }
-
   const devDeps: Record<string, string> = {
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
@@ -67,7 +212,6 @@ function rootPackageJson(opts: GenerateOptions): string {
     tailwindcss: "^3.4.15",
     typescript: "^5.7.2",
   };
-
   return (
     JSON.stringify(
       {
@@ -89,29 +233,33 @@ function rootPackageJson(opts: GenerateOptions): string {
   );
 }
 
-function tsconfig(): string {
+function tsconfig(profile: StyleProfile): string {
+  // We only emit `paths` aliases when imports are absolute — otherwise
+  // there's no need and it just adds noise.
+  const compilerOptions: Record<string, unknown> = {
+    target: "ES2022",
+    lib: ["dom", "dom.iterable", "ES2022"],
+    allowJs: false,
+    skipLibCheck: true,
+    strict: true,
+    noEmit: true,
+    esModuleInterop: true,
+    module: "esnext",
+    moduleResolution: "bundler",
+    resolveJsonModule: true,
+    isolatedModules: true,
+    jsx: "preserve",
+    incremental: true,
+    plugins: [{ name: "next" }],
+  };
+  if (profile.conventions.imports === "absolute") {
+    const aliasTarget = profile.structure.useSrcDir ? "./src/*" : "./*";
+    compilerOptions.paths = { "@/*": [aliasTarget] };
+  }
   return (
     JSON.stringify(
       {
-        compilerOptions: {
-          target: "ES2022",
-          lib: ["dom", "dom.iterable", "ES2022"],
-          allowJs: false,
-          skipLibCheck: true,
-          strict: true,
-          noEmit: true,
-          esModuleInterop: true,
-          module: "esnext",
-          moduleResolution: "bundler",
-          resolveJsonModule: true,
-          isolatedModules: true,
-          jsx: "preserve",
-          incremental: true,
-          plugins: [{ name: "next" }],
-          paths: {
-            "@/*": ["./*"],
-          },
-        },
+        compilerOptions,
         include: [
           "next-env.d.ts",
           "**/*.ts",
@@ -136,13 +284,19 @@ export default nextConfig;
 `;
 }
 
-function tailwindConfig(): string {
+function tailwindConfig(profile: StyleProfile): string {
+  const root = profile.structure.useSrcDir ? "./src" : ".";
+  // Always cover app/ + components/. Add hooks/services if the profile
+  // includes them, since they may contain JSX (rare but possible).
+  const dirs = ["app", "components"];
+  if (profile.structure.hasHooksDir) dirs.push("hooks");
+  if (profile.structure.hasServicesDir) dirs.push("services");
+  const content = dirs.map((d) => `"${root}/${d}/**/*.{js,ts,jsx,tsx,mdx}"`);
   return `import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    "./app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    ${content.join(",\n    ")},
   ],
   theme: {
     extend: {
@@ -204,10 +358,21 @@ body {
 `;
 }
 
-function layoutTsx(opts: GenerateOptions): string {
+function layoutTsx(
+  opts: GenerateOptions,
+  profile: StyleProfile,
+  paths: FrontendPaths,
+): string {
   const desc = opts.description?.replace(/"/g, '\\"') ?? "";
+  // globals.css is always imported by relative path — it's a CSS side-effect
+  // import and Next.js convention is to use './globals.css' from layout.
+  const cssRel = path.posix.relative(
+    path.posix.dirname(paths.layoutPath),
+    paths.globalsCssPath,
+  );
+  const cssImport = cssRel.startsWith(".") ? cssRel : "./" + cssRel;
   return `import type { Metadata } from "next";
-import "./globals.css";
+import "${cssImport}";
 
 export const metadata: Metadata = {
   title: ${JSON.stringify(opts.projectName)},
@@ -226,15 +391,48 @@ export default function RootLayout({
   );
 }
 `;
+  // `profile` accepted for symmetry / future expansion (e.g. font choices).
+  void profile;
 }
 
-function pageTsx(opts: GenerateOptions): string {
+function pageTsx(
+  opts: GenerateOptions,
+  profile: StyleProfile,
+  paths: FrontendPaths,
+): string {
   const tagline =
     opts.description ??
     `Welcome to ${opts.projectName}. Replace this hero section with your own copy.`;
-  return `import Header from "@/components/Header";
-import Footer from "@/components/Footer";
-import { Button } from "@/components/ui/Button";
+  const headerImport = importStatement(
+    "Header",
+    paths.pagePath,
+    paths.headerPath,
+    profile,
+  );
+  const footerImport = importStatement(
+    "Footer",
+    paths.pagePath,
+    paths.footerPath,
+    profile,
+  );
+  // Button is always a named export (it's a UI primitive — named exports
+  // are the more idiomatic choice for a `Button` shadcn-style component).
+  const buttonImportPath = (() => {
+    const noExt = paths.buttonPath.replace(/\.(tsx|ts|jsx|js)$/, "");
+    if (profile.conventions.imports === "absolute") {
+      const rootPrefix = profile.structure.useSrcDir ? "src/" : "";
+      return `@/${noExt.replace(rootPrefix, "")}`;
+    }
+    const rel = path.posix.relative(
+      path.posix.dirname(paths.pagePath),
+      noExt,
+    );
+    return rel.startsWith(".") ? rel : "./" + rel;
+  })();
+
+  return `${headerImport}
+${footerImport}
+import { Button } from "${buttonImportPath}";
 
 export default function HomePage() {
   return (
@@ -258,10 +456,17 @@ export default function HomePage() {
 `;
 }
 
-function headerTsx(opts: GenerateOptions): string {
+function headerTsx(
+  opts: GenerateOptions,
+  profile: StyleProfile,
+  paths: FrontendPaths,
+): string {
+  // next/link is a 3rd-party import — always written as `from "next/link"`.
+  const exportPrefix = componentExportPrefix("Header", profile);
+  void paths; // currently unused inside Header but kept in signature for symmetry
   return `import Link from "next/link";
 
-export default function Header() {
+${exportPrefix}() {
   return (
     <header className="border-b border-zinc-200 dark:border-zinc-800">
       <div className="mx-auto max-w-6xl px-6 py-4 flex items-center justify-between">
@@ -280,8 +485,9 @@ export default function Header() {
 `;
 }
 
-function footerTsx(opts: GenerateOptions): string {
-  return `export default function Footer() {
+function footerTsx(opts: GenerateOptions, profile: StyleProfile): string {
+  const exportPrefix = componentExportPrefix("Footer", profile);
+  return `${exportPrefix}() {
   return (
     <footer className="border-t border-zinc-200 dark:border-zinc-800 py-8 text-center text-sm text-zinc-500">
       &copy; {new Date().getFullYear()} ${escapeJsx(opts.projectName)}
@@ -291,8 +497,21 @@ function footerTsx(opts: GenerateOptions): string {
 `;
 }
 
-function buttonTsx(): string {
-  return `import { cn } from "@/lib/cn";
+function buttonTsx(profile: StyleProfile, paths: FrontendPaths): string {
+  // Compute the cn import path relative to wherever Button ended up.
+  const cnNoExt = paths.cnPath.replace(/\.ts$/, "");
+  let cnImport: string;
+  if (profile.conventions.imports === "absolute") {
+    const rootPrefix = profile.structure.useSrcDir ? "src/" : "";
+    cnImport = `@/${cnNoExt.replace(rootPrefix, "")}`;
+  } else {
+    const rel = path.posix.relative(
+      path.posix.dirname(paths.buttonPath),
+      cnNoExt,
+    );
+    cnImport = rel.startsWith(".") ? rel : "./" + rel;
+  }
+  return `import { cn } from "${cnImport}";
 import type { ButtonHTMLAttributes } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -346,9 +565,24 @@ export const stripe = new Stripe(secret, { apiVersion: "2024-11-20.acacia" });
 `;
 }
 
-function stripeCheckoutRouteTs(): string {
+function stripeCheckoutRouteTs(
+  profile: StyleProfile,
+  paths: FrontendPaths,
+): string {
+  const stripeNoExt = paths.stripeLibPath!.replace(/\.ts$/, "");
+  let stripeImport: string;
+  if (profile.conventions.imports === "absolute") {
+    const rootPrefix = profile.structure.useSrcDir ? "src/" : "";
+    stripeImport = `@/${stripeNoExt.replace(rootPrefix, "")}`;
+  } else {
+    const rel = path.posix.relative(
+      path.posix.dirname(paths.stripeRoutePath!),
+      stripeNoExt,
+    );
+    stripeImport = rel.startsWith(".") ? rel : "./" + rel;
+  }
   return `import { NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
+import { stripe } from "${stripeImport}";
 
 // Force the Node runtime — Stripe's SDK uses APIs that aren't available
 // on Edge.
@@ -383,7 +617,55 @@ export async function POST(request: Request) {
 `;
 }
 
-// --- helpers ----------------------------------------------------------------
+function useExampleHookTs(): string {
+  return `import { useState } from "react";
+
+/** Replace this with the first real custom hook in your app. The shape is
+ * here so the project's hooks/ directory isn't empty on day one. */
+export function useExample(initial = 0) {
+  const [count, setCount] = useState(initial);
+  return {
+    count,
+    increment: () => setCount((c) => c + 1),
+    reset: () => setCount(initial),
+  };
+}
+`;
+}
+
+function apiServiceTs(): string {
+  return `// Tiny fetch wrapper. Replace as soon as you reach for axios/ky/etc.
+//
+// Keeps a single place to add auth headers, retries, error normalisation.
+
+const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+
+export async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(\`\${BASE_URL}\${path}\`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(\`GET \${path} failed: \${res.status}\`);
+  return (await res.json()) as T;
+}
+
+export async function apiPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(\`\${BASE_URL}\${path}\`, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(\`POST \${path} failed: \${res.status}\`);
+  return (await res.json()) as T;
+}
+`;
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
 
 function slugify(name: string): string {
   return (
@@ -395,8 +677,6 @@ function slugify(name: string): string {
   );
 }
 
-/** JSX text-content escaper. We embed user-provided strings into JSX, so we
- * defang the four characters that have meaning there. */
 function escapeJsx(s: string): string {
   return s
     .replace(/&/g, "&amp;")
